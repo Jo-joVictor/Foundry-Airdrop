@@ -8,17 +8,15 @@ A complete Merkle-tree based airdrop system with EIP-712 signature verification 
 ├── script/
 │   ├── DeployMerkleAirdrop.s.sol    # Deployment script
 │   ├── GenerateInput.s.sol          # Generates input.json with addresses and amounts
-│   ├── Interact.s.sol               # Claim airdrop interaction
 │   ├── MakeMerkle.s.sol            # Generates Merkle tree and proofs
-│   ├── SplitSignature.s.sol        # Splits signature into v, r, s
 │   └── target/
 │       ├── input.json              # Input data for Merkle tree
 │       └── output.json             # Merkle root and proofs
 ├── src/
-│   ├── Michel.sol                  # ERC20 token to be airdropped
+│   ├── Michael.sol                 # ERC20 token to be airdropped
 │   └── MerkleAirdrop.sol           # Main airdrop contract
 └── test/
-    └── MerkleAirdrop.t.sol         # Test suite
+    └── MerkleAirdropTest.t.sol     # Test suite
 ```
 
 ## Dependencies Installation
@@ -126,26 +124,21 @@ cast call <AIRDROP_ADDRESS> "getMessageHash(address,uint256)" <USER_ADDRESS> <AM
 cast wallet sign <MESSAGE_HASH> --private-key <PRIVATE_KEY>
 ```
 
-#### Claim via Script
+#### Claim via Direct Contract Interaction
 
-Update `Interact.s.sol` with:
-- Your address
-- Amount to claim
-- Merkle proof from `output.json`
-- Signature
+Users can claim through:
+- **Frontend dApp** (recommended for end users)
+- **Direct contract interaction** (using Cast or web3 libraries)
+- **Custom scripts** (for automated systems)
 
-Then run:
-
-```bash
-forge script script/Interact.s.sol --rpc-url http://localhost:8545 --broadcast
-```
-
-### Split Signature
-
-To split a signature into v, r, s components:
+Example using Cast:
 
 ```bash
-forge script script/SplitSignature.s.sol
+# Split signature into v, r, s
+# Then call claim function
+cast send <AIRDROP_ADDRESS> "claim(address,uint256,bytes32[],uint8,bytes32,bytes32)" \
+  <USER_ADDRESS> <AMOUNT> "[<PROOF1>,<PROOF2>]" <V> <R> <S> \
+  --private-key <PRIVATE_KEY>
 ```
 
 ## Testing
@@ -249,8 +242,7 @@ forge script script/DeployMerkleAirdrop.s.sol --rpc-url http://localhost:8545 --
 # 5. User signs message (off-chain)
 cast wallet sign <MESSAGE_HASH> --private-key <PRIVATE_KEY>
 
-# 6. Claim airdrop
-forge script script/Interact.s.sol --rpc-url http://localhost:8545 --broadcast
+# 6. User claims airdrop (via dApp or direct call)
 
 # 7. Verify claim
 cast call <TOKEN_ADDRESS> "balanceOf(address)" <USER_ADDRESS>
@@ -286,6 +278,7 @@ Update `AMOUNT_TO_TRANSFER` in `DeployMerkleAirdrop.s.sol` accordingly.
 - Ensure you're using the correct proof from `output.json`
 - Verify the Merkle root matches deployment
 - Check that address and amount match input data
+- Regenerate Merkle tree if you modified `input.json`
 
 ### "Invalid Signature" Error
 
@@ -297,6 +290,13 @@ Update `AMOUNT_TO_TRANSFER` in `DeployMerkleAirdrop.s.sol` accordingly.
 
 - Address has already claimed their airdrop
 - Check with `hasClaimed(address)` function
+
+### Merkle Tree Generation Issues
+
+If proofs don't verify:
+1. Ensure `MakeMerkle.s.sol` uses double-hashing: `keccak256(bytes.concat(keccak256(dataEncoded)))`
+2. This must match the contract's leaf generation
+3. Regenerate the tree after any changes
 
 ## Gas Optimization Tips
 
