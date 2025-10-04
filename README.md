@@ -1,309 +1,237 @@
-# Merkle Airdrop Project
+# MerkleAirdrop Smart Contract
 
-A complete Merkle-tree based airdrop system with EIP-712 signature verification built with Foundry.
+A gas-efficient token airdrop system built with Solidity and Foundry that uses Merkle trees for verification and EIP-712 signatures for secure, gasless claiming via relayers.
 
-## Project Structure
+## Features
 
-```
-├── script/
-│   ├── DeployMerkleAirdrop.s.sol    # Deployment script
-│   ├── GenerateInput.s.sol          # Generates input.json with addresses and amounts
-│   ├── MakeMerkle.s.sol            # Generates Merkle tree and proofs
-│   └── target/
-│       ├── input.json              # Input data for Merkle tree
-│       └── output.json             # Merkle root and proofs
-├── src/
-│   ├── Michael.sol                 # ERC20 token to be airdropped
-│   └── MerkleAirdrop.sol           # Main airdrop contract
-└── test/
-    └── MerkleAirdropTest.t.sol     # Test suite
-```
+- **Merkle tree verification**: Efficient proof-based claim validation
+- **EIP-712 signature support**: Enables gasless transactions through meta-transactions
+- **Gas-optimized claiming**: Users can claim tokens or delegate to a gas payer
+- **Duplicate claim protection**: Prevents multiple claims from the same address
+- **Claimer tracking**: Maintains a record of all addresses that have claimed
+- **Safe token transfers**: Uses OpenZeppelin's SafeERC20 for secure transfers
+- **Automated proof generation**: Scripts included for merkle tree creation
 
-## Dependencies Installation
+## Quick Start
 
-```bash
-# Initialize Foundry project (if not already)
-forge init
+### Prerequisites
 
-# Install OpenZeppelin contracts
-forge install OpenZeppelin/openzeppelin-contracts --no-commit
+- [Foundry](https://book.getfoundry.sh/getting-started/installation)
+- [Git](https://git-scm.com/book/en/v2/Getting-Started-Installing-Git)
 
-# Install Murky for Merkle tree generation
-forge install dmfxyz/murky --no-commit
-
-# Install Foundry DevOps
-forge install Cyfrin/foundry-devops --no-commit
-```
-
-## Configuration
-
-Add to your `foundry.toml`:
-
-```toml
-[profile.default]
-src = "src"
-out = "out"
-libs = ["lib"]
-remappings = [
-    "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
-    "forge-std/=lib/forge-std/src/"
-]
-
-[rpc_endpoints]
-sepolia = "${SEPOLIA_RPC_URL}"
-mainnet = "${MAINNET_RPC_URL}"
-```
-
-## Setup Steps
-
-### 1. Generate Input Data
-
-Generate the input.json file with whitelisted addresses and amounts:
+### Installation
 
 ```bash
-forge script script/GenerateInput.s.sol
-```
-
-This creates `script/target/input.json` with your airdrop recipients.
-
-### 2. Generate Merkle Tree and Proofs
-
-Generate the Merkle root and proofs from input data:
-
-```bash
-forge script script/MakeMerkle.s.sol
-```
-
-This creates `script/target/output.json` with:
-- Merkle root
-- Merkle proofs for each address
-
-### 3. Update Deployment Script
-
-Copy the Merkle root from `output.json` and update it in `DeployMerkleAirdrop.s.sol`:
-
-```solidity
-bytes32 public ROOT = 0xYOUR_MERKLE_ROOT_HERE;
-```
-
-### 4. Deploy Contracts
-
-Deploy to local Anvil chain:
-
-```bash
-# Start Anvil
-anvil
-
-# Deploy (in new terminal)
-forge script script/DeployMerkleAirdrop.s.sol --rpc-url http://localhost:8545 --broadcast
-```
-
-Deploy to testnet (e.g., Sepolia):
-
-```bash
-forge script script/DeployMerkleAirdrop.s.sol --rpc-url $SEPOLIA_RPC_URL --broadcast --verify --etherscan-api-key $ETHERSCAN_API_KEY
+git clone <your-repo-url>
+cd merkle-airdrop
+forge install
 ```
 
 ## Usage
 
-### Claiming Airdrop
-
-Users need to:
-1. Sign a message with their private key
-2. Submit the signature along with their Merkle proof
-
-#### Generate Signature (Off-chain)
-
-Use Cast to generate signature:
+### Generate Merkle Tree
 
 ```bash
-# Get message hash
-cast call <AIRDROP_ADDRESS> "getMessageHash(address,uint256)" <USER_ADDRESS> <AMOUNT>
+# Step 1: Generate input.json with whitelisted addresses
+forge script script/GenerateInput.s.sol
 
-# Sign the message hash
-cast wallet sign <MESSAGE_HASH> --private-key <PRIVATE_KEY>
+# Step 2: Generate merkle proofs and root
+forge script script/MakeMerkle.s.sol
 ```
 
-#### Claim via Direct Contract Interaction
+This creates two files in `script/target/`:
+- `input.json`: Whitelist of addresses and amounts
+- `output.json`: Merkle proofs, root, and leaf hashes
 
-Users can claim through:
-- **Frontend dApp** (recommended for end users)
-- **Direct contract interaction** (using Cast or web3 libraries)
-- **Custom scripts** (for automated systems)
-
-Example using Cast:
+### Deploy Contracts
 
 ```bash
-# Split signature into v, r, s
-# Then call claim function
-cast send <AIRDROP_ADDRESS> "claim(address,uint256,bytes32[],uint8,bytes32,bytes32)" \
-  <USER_ADDRESS> <AMOUNT> "[<PROOF1>,<PROOF2>]" <V> <R> <S> \
-  --private-key <PRIVATE_KEY>
+# Deploy to local anvil
+forge script script/DeployMerkleAirdrop.s.sol --rpc-url <RPC_URL> --broadcast
+
+# Deploy to testnet
+forge script script/DeployMerkleAirdrop.s.sol --rpc-url <TESTNET_RPC_URL> --private-key <PRIVATE_KEY> --broadcast --verify
 ```
+
+### Claim Tokens
+
+Users can claim tokens by providing:
+- Their address
+- Claim amount
+- Merkle proof (from output.json)
+- EIP-712 signature (v, r, s)
+
+```solidity
+airdrop.claim(account, amount, merkleProof, v, r, s);
+```
+
+## Contract Architecture
+
+### Core Contracts
+
+- **MerkleAirdrop.sol**: Main airdrop contract with merkle verification and signature validation
+- **Michael.sol**: ERC20 token being distributed (MIK token with 1M initial supply)
+
+### Key Components
+
+#### MerkleAirdrop Functions
+
+- `claim()`: Verify proof and signature, then transfer tokens to claimer
+- `getMessageHash()`: Generate EIP-712 typed data hash for signing
+- `getMerkleRoot()`: Return the merkle root used for verification
+- `getAirdropToken()`: Return the token contract address
+- `hasClaimed()`: Check if an address has already claimed
+- `getClaimers()`: Get list of all addresses that have claimed
+
+#### Michael Token Functions
+
+- `mint()`: Owner-only function to mint additional tokens
+- Standard ERC20 functionality
+
+### Deployment Scripts
+
+- **DeployMerkleAirdrop.s.sol**: Deploys token and airdrop contracts, transfers initial supply
+- **GenerateInput.s.sol**: Creates input.json with whitelisted addresses and amounts
+- **MakeMerkle.s.sol**: Generates merkle tree, proofs, and root from input.json
 
 ## Testing
 
-Run all tests:
+Run the complete test suite:
 
 ```bash
+# Run all tests
 forge test
+
+# Run with verbose output
+forge test -vvv
+
+# Run specific test
+forge test --match-test testUsersCanClaim
 ```
 
-Run with verbosity:
+### Test Coverage
 
-```bash
-forge test -vvvv
+- **Successful Claims**: Users can claim with valid proof and signature
+- **Gasless Claims**: Gas payer can claim on behalf of user with valid signature
+- **Duplicate Prevention**: Reverts on second claim attempt
+- **Invalid Proof**: Reverts with invalid merkle proof
+- **Invalid Signature**: Reverts with incorrect signature
+- **Event Emission**: Validates Claim event is emitted correctly
+- **Getter Functions**: Tests all view functions
+- **Claimer Tracking**: Verifies claimer array updates correctly
+
+## Security Features
+
+- **Merkle Proof Verification**: Only whitelisted addresses can claim
+- **EIP-712 Signatures**: Prevents replay attacks and ensures claim authenticity
+- **Duplicate Claim Prevention**: Mapping tracks claimed addresses
+- **SafeERC20**: Protects against non-standard token implementations
+- **Custom Errors**: Gas-efficient error handling
+- **Immutable Variables**: Merkle root and token address cannot be changed
+
+## Gas Optimization
+
+- Custom errors instead of require strings
+- Immutable variables for constant values
+- Efficient storage with mappings
+- SafeERC20 for optimized token transfers
+- Merkle trees reduce on-chain storage requirements
+
+## Merkle Tree Structure
+
+The airdrop uses a standard Merkle tree implementation:
+
+1. **Leaf Generation**: `keccak256(bytes.concat(keccak256(abi.encode(address, amount))))`
+2. **Tree Construction**: Binary tree built from leaf hashes
+3. **Proof Verification**: Users provide branch hashes to verify their leaf
+
+### Example Whitelist
+
+```json
+{
+  "types": ["address", "uint"],
+  "count": 4,
+  "values": {
+    "0": {
+      "0": "0xEeaD1C9a07cbDcB51d6C658672A9BCc3c742a47D",
+      "1": "25000000000000000000"
+    },
+    "1": {
+      "0": "0x2C8a6AD355c6635A29eeb59AD2a4DFf58333DeED",
+      "1": "25000000000000000000"
+    },
+    "2": {
+      "0": "0x660c67397FD36EfB9116f90F555558B4da685790",
+      "1": "25000000000000000000"
+    },
+    "3": {
+      "0": "0x92188D4D8814886Ff08E1199d125E1995F432f1e",
+      "1": "25000000000000000000"
+    }
+  }
+}
 ```
 
-Run specific test:
+## EIP-712 Signature Structure
 
-```bash
-forge test --match-test testUsersCanClaim -vvvv
-```
-
-Run with gas report:
-
-```bash
-forge test --gas-report
-```
-
-## Key Features
-
-### MerkleAirdrop Contract
-
-- **EIP-712 Signatures**: Users sign typed structured data
-- **Merkle Proof Verification**: Efficient whitelist verification
-- **Gas Optimization**: Third-party can pay gas for users
-- **Reentrancy Protection**: Uses OpenZeppelin's SafeERC20
-
-### Security Features
-
-- Prevents double claiming
-- Validates signatures against message hash
-- Verifies Merkle proofs
-- Uses battle-tested OpenZeppelin contracts
-
-## Contract Interactions
-
-### Check if Address Has Claimed
-
-```bash
-cast call <AIRDROP_ADDRESS> "hasClaimed(address)" <USER_ADDRESS>
-```
-
-### Get Merkle Root
-
-```bash
-cast call <AIRDROP_ADDRESS> "getMerkleRoot()"
-```
-
-### Get Airdrop Token
-
-```bash
-cast call <AIRDROP_ADDRESS> "getAirdropToken()"
-```
-
-### Check Token Balance
-
-```bash
-cast call <TOKEN_ADDRESS> "balanceOf(address)" <USER_ADDRESS>
-```
-
-## Environment Variables
-
-Create a `.env` file:
-
-```env
-PRIVATE_KEY=your_private_key
-SEPOLIA_RPC_URL=your_sepolia_rpc_url
-ETHERSCAN_API_KEY=your_etherscan_api_key
-```
-
-Load environment variables:
-
-```bash
-source .env
-```
-
-## Workflow Example
-
-```bash
-# 1. Generate input data
-forge script script/GenerateInput.s.sol
-
-# 2. Generate Merkle tree
-forge script script/MakeMerkle.s.sol
-
-# 3. Copy Merkle root to deployment script
-
-# 4. Deploy
-forge script script/DeployMerkleAirdrop.s.sol --rpc-url http://localhost:8545 --broadcast
-
-# 5. User signs message (off-chain)
-cast wallet sign <MESSAGE_HASH> --private-key <PRIVATE_KEY>
-
-# 6. User claims airdrop (via dApp or direct call)
-
-# 7. Verify claim
-cast call <TOKEN_ADDRESS> "balanceOf(address)" <USER_ADDRESS>
-```
-
-## Customization
-
-### Adding More Users
-
-Edit `GenerateInput.s.sol`:
+The contract implements EIP-712 for structured data signing:
 
 ```solidity
-string[] whitelist = new string[](YOUR_COUNT);
-whitelist[0] = "0xAddress1";
-whitelist[1] = "0xAddress2";
-// Add more addresses
+struct AirdropClaim {
+    address account;
+    uint256 amount;
+}
 ```
 
-### Changing Airdrop Amount
+**Domain**: `MerkleAirdrop` version `1`
 
-Edit in `GenerateInput.s.sol`:
+**Message Type**: `AirdropClaim(address account,uint256 amount)`
 
-```solidity
-uint256 private constant AMOUNT = YOUR_AMOUNT * 1e18;
-```
+## Token Details
 
-Update `AMOUNT_TO_TRANSFER` in `DeployMerkleAirdrop.s.sol` accordingly.
+**Michael Token (MIK)**
+- Initial Supply: 1,000,000 MIK
+- Decimals: 18
+- Mintable: Yes (owner only)
+- Standard: ERC20
 
-## Troubleshooting
+## Deployment Configuration
 
-### "Invalid Proof" Error
+### Default Airdrop Parameters
 
-- Ensure you're using the correct proof from `output.json`
-- Verify the Merkle root matches deployment
-- Check that address and amount match input data
-- Regenerate Merkle tree if you modified `input.json`
+- **Merkle Root**: `0x6ca27f42c07c4174051ccff754332d7da0513d513bedbe8ce35b3fa05fc66522`
+- **Airdrop Amount**: 100 tokens (4 users × 25 tokens each)
+- **Claim Amount**: 25 tokens per address
 
-### "Invalid Signature" Error
+### Whitelisted Addresses
 
-- Ensure signature is signed by the claiming address
-- Verify message hash is generated correctly
-- Check v, r, s values are split correctly
+1. `0xEeaD1C9a07cbDcB51d6C658672A9BCc3c742a47D` - 25 MIK
+2. `0x2C8a6AD355c6635A29eeb59AD2a4DFf58333DeED` - 25 MIK
+3. `0x660c67397FD36EfB9116f90F555558B4da685790` - 25 MIK
+4. `0x92188D4D8814886Ff08E1199d125E1995F432f1e` - 25 MIK
 
-### "Already Claimed" Error
+## Deployed Contracts
 
-- Address has already claimed their airdrop
-- Check with `hasClaimed(address)` function
+### Sepolia Testnet
+- **MerkleAirdrop Contract**: `0x7fa9385be102ac3eac297483dd6233d62b3e1496`
+- **Michael Token (MIK)**: `0x5b73c5498c1e3b4dba84de0f1833c4a029d90519`
 
-### Merkle Tree Generation Issues
+## Contributing
 
-If proofs don't verify:
-1. Ensure `MakeMerkle.s.sol` uses double-hashing: `keccak256(bytes.concat(keccak256(dataEncoded)))`
-2. This must match the contract's leaf generation
-3. Regenerate the tree after any changes
-
-## Gas Optimization Tips
-
-- Users can have someone else pay for gas (meta-transaction pattern)
-- Batch multiple claims in a single transaction (requires contract modification)
-- Use efficient data structures (uint96 for amounts if possible)
+1. Fork the repository
+2. Create a feature branch
+3. Add comprehensive tests for new functionality
+4. Ensure all tests pass
+5. Submit a pull request
 
 ## License
 
-MIT
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+## Resources
+
+- [Foundry Documentation](https://book.getfoundry.sh/)
+- [OpenZeppelin Contracts](https://docs.openzeppelin.com/contracts/)
+- [EIP-712 Specification](https://eips.ethereum.org/EIPS/eip-712)
+- [Merkle Tree Explanation](https://en.wikipedia.org/wiki/Merkle_tree)
+- [Murky Library](https://github.com/dmfxyz/murky)
